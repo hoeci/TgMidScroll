@@ -1,0 +1,4 @@
+IDI_APPICON ICON "TgMidScroll.ico"
+ID_CUR_MIDDLE CURSOR "pan_middle_vertical.cur"
+ID_CUR_NORTH  CURSOR "pan_north.cur"
+ID_CUR_SOUTH  CURSOR "pan_south.cur"
