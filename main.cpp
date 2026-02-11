@@ -27,7 +27,6 @@
 // --- CONFIGURATION ---
 const int    SCROLL_TICK_MS    = 2;
 
-// Pixels from anchor before scrolling engages.
 const int    DEADZONE          = 15;
 const float  SPEED_LINEAR      = 10.0f;
 const float  SPEED_QUADRATIC   = 0.10f;
@@ -89,25 +88,54 @@ void UpdateCursorShape(int dir) {
     }
 }
 
-// --- HELPER: CHECK IF WINDOW IS TELEGRAM ---
-bool IsTelegramWindow(HWND hwnd) {
+// --- HELPER: CHECK IF HWND BELONGS TO telegram.exe ---
+bool IsTelegramProcess(HWND hwnd) {
     if (!hwnd) return false;
     DWORD pid;
     GetWindowThreadProcessId(hwnd, &pid);
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
-    if (hProcess) {
-        char buffer[MAX_PATH];
-        if (GetModuleFileNameExA(hProcess, NULL, buffer, MAX_PATH)) {
-            std::string path = buffer;
-            std::transform(path.begin(), path.end(), path.begin(), ::tolower);
-            if (path.find("telegram.exe") != std::string::npos) {
-                CloseHandle(hProcess);
-                return true;
-            }
-        }
-        CloseHandle(hProcess);
+    if (!hProcess) return false;
+    bool result = false;
+    char buffer[MAX_PATH];
+    if (GetModuleFileNameExA(hProcess, NULL, buffer, MAX_PATH)) {
+        std::string path = buffer;
+        std::transform(path.begin(), path.end(), path.begin(), ::tolower);
+        result = (path.find("telegram.exe") != std::string::npos);
+    }
+    CloseHandle(hProcess);
+    return result;
+}
+
+// --- HELPER: CHECK IF WINDOW IS MEDIA VIEWER ---
+bool IsMediaViewerWindow(HWND hwnd) {
+    if (!hwnd) return false;
+    HWND hRoot = GetAncestor(hwnd, GA_ROOT);
+    if (!hRoot) hRoot = hwnd;
+    char title[256];
+    if (GetWindowTextA(hRoot, title, sizeof(title)) > 0) {
+        std::string sTitle = title;
+        std::transform(sTitle.begin(), sTitle.end(), sTitle.begin(), ::tolower);
+        if (sTitle.find("media viewer") != std::string::npos)
+            return true;
     }
     return false;
+}
+
+// --- HELPER: CHECK IF WINDOW IS SCROLLABLE TELEGRAM ---
+bool IsScrollableTelegramWindow(HWND hwnd) {
+    if (!hwnd) return false;
+
+    HWND hRoot = GetAncestor(hwnd, GA_ROOT);
+    if (!hRoot) hRoot = hwnd;
+
+    if (!IsTelegramProcess(hRoot)) return false;
+
+    LONG_PTR style = GetWindowLongPtr(hRoot, GWL_STYLE);
+    if (!(style & WS_THICKFRAME)) return false;
+
+    if (IsMediaViewerWindow(hRoot)) return false;
+
+    return true;
 }
 
 // --- THREAD: SCROLLING ENGINE ---
@@ -122,6 +150,9 @@ DWORD WINAPI AutoScrollThread(LPVOID) {
 
     float accumulator = 0.0f;
 
+    HWND targetRoot = GetAncestor(targetWindow, GA_ROOT);
+    if (!targetRoot) targetRoot = targetWindow;
+
     while (isAutoScrolling && isEnabled) {
         QueryPerformanceCounter(&now);
         float dt = (float)(now.QuadPart - prev.QuadPart) / (float)freq.QuadPart;
@@ -129,6 +160,12 @@ DWORD WINAPI AutoScrollThread(LPVOID) {
         if (dt > 0.1f) dt = 0.1f;
 
         if (!targetWindow || !IsWindow(targetWindow)) {
+            isAutoScrolling = false;
+            break;
+        }
+
+        HWND fg = GetForegroundWindow();
+        if (fg != NULL && fg != targetRoot) {
             isAutoScrolling = false;
             break;
         }
@@ -182,7 +219,7 @@ LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
         if (wParam == WM_MBUTTONDOWN) {
             HWND hwndUnder = WindowFromPoint(ms->pt);
-            if (IsTelegramWindow(hwndUnder)) {
+            if (IsScrollableTelegramWindow(hwndUnder)) {
                 if (isAutoScrolling) {
                     isAutoScrolling = false;
                 } else if (!threadRunning) {
@@ -233,7 +270,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
         // Ctrl+F11  — quit
         if (ctrlDown && p->vkCode == VK_F11) {
-            if (IsTelegramWindow(GetForegroundWindow())) {
+            if (IsTelegramProcess(GetForegroundWindow())) {
                 isAutoScrolling = false;
                 RestoreSystemCursor();
                 PostQuitMessage(0);
@@ -242,7 +279,7 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
         }
         // Ctrl+F12  — toggle enable / disable
         if (ctrlDown && p->vkCode == VK_F12) {
-            if (IsTelegramWindow(GetForegroundWindow())) {
+            if (IsTelegramProcess(GetForegroundWindow())) {
                 isEnabled = !isEnabled;
                 if (!isEnabled && isAutoScrolling)
                     isAutoScrolling = false;
