@@ -2,6 +2,8 @@
 
 **TgMidScroll** is a lightweight Windows utility that adds middle-click auto-scrolling to [Telegram Desktop](https://github.com/telegramdesktop/tdesktop). It mimics the behavior found in web browsers like Chrome or Firefox.
 
+<img src="https://github.com/user-attachments/assets/7a6e7807-dcc7-44aa-99e6-37248d806302" width="55%">
+
 ## Features
 *   **Native Feel:** Smooth scrolling with acceleration logic.
 *   **Visual Feedback:** Changes cursor to scroll anchors (North/South/Middle) just like a browser.
